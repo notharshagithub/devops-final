@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: taskboard
+  labels:
+    app.kubernetes.io/name: taskboard
+    app.kubernetes.io/managed-by: helm

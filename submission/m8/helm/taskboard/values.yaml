@@ -1,0 +1,48 @@
+# Default values for TaskBoard. Override per-env in values-dev.yaml.
+replicaCount:
+  backend: 2
+  frontend: 2
+
+images:
+  backend:
+    repository: ghcr.io/PLACEHOLDER/taskboard-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: ghcr.io/PLACEHOLDER/taskboard-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+# In-cluster demo Postgres. For production use RDS (see README + terraform/).
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: taskboard
+  password: taskboard
+  database: taskboard
+  storageSize: 5Gi
+
+backend:
+  port: 8000
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+frontend:
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: taskboard.local
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 60
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
