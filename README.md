@@ -14,6 +14,8 @@ manifests for troubleshooting practice.
 This is an original implementation (FastAPI + SQLAlchemy 2.0 mapped classes, hand-written Helm
 chart, Vite + Nginx routing). It follows the Session 21 architecture for the DevOps layer, with
 all application code authored in this repository.
+
+video link - https://drive.google.com/drive/folders/1HwfJMDl-EV2hIpUofReyGCTg8Fus1Y53?usp=sharing
 /
 ```
 Developer
