@@ -1,0 +1,27 @@
+# Deliberately broken image for troubleshooting lab.
+# Apply: kubectl apply -f troubleshooting/broken-image.yaml
+# Investigate: kubectl get pods -n taskboard; kubectl describe pod <name>; kubectl get events --sort-by=.lastTimestamp
+# Expected: ImagePullBackOff -> wrong image/tag -> fix deployment.
+# Fix: kubectl set image deployment/taskboard-backend backend=<correct-image> -n taskboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskboard-backend-broken
+  namespace: taskboard
+  labels:
+    app: taskboard-backend-broken
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: taskboard-backend-broken
+  template:
+    metadata:
+      labels:
+        app: taskboard-backend-broken
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/PLACEHOLDER/taskboard-backend:does-not-exist
+          ports:
+            - containerPort: 8000

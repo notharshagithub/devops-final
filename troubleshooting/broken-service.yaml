@@ -1,0 +1,17 @@
+# Deliberately broken Service (selector matches no Pods) for troubleshooting lab.
+# Apply: kubectl apply -f troubleshooting/broken-service.yaml
+# Investigate: kubectl get svc taskboard-backend-broken -n taskboard; kubectl get endpoints taskboard-backend-broken -n taskboard; kubectl get pods --show-labels -n taskboard
+# Expected: no endpoints -> selector labels don't match any Pod -> fix selector.
+# Lesson: Service selects Pods using labels. No matching labels = no endpoints = no traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskboard-backend-broken
+  namespace: taskboard
+spec:
+  type: ClusterIP
+  selector:
+    app: taskboard-backend-typo-label
+  ports:
+    - port: 8000
+      targetPort: 8000
