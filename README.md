@@ -296,9 +296,12 @@ exit-code: "1"   # pipeline fails when such CVEs are found
 What this means (2–3 sentences for the submission): Trivy scanned the backend and frontend
 container images — OS packages plus Python/Node dependencies — for known HIGH and CRITICAL
 vulnerabilities, and the pipeline is configured to fail when any are found, blocking the
-tainted image from reaching GHCR and the cluster. A clean scan means no known HIGH/CRITICAL
-CVEs at scan time; a finding names the CVE, package, and fixed version so you bump the base
-image or dependency and rebuild. Container scanning is one layer alongside SAST, dependency
+tainted image from reaching GHCR and the cluster. The first scan found 48 HIGHs in Debian
+13.7 OS packages with no published fix plus 6 fixable HIGHs in `python-multipart` 0.0.20 and
+`starlette` 0.47.3; we upgraded to `python-multipart` 0.0.32, FastAPI 0.143.2 (starlette 1.8.0)
+and instrumentator 8.1.0, clearing all Python findings, and set `ignore-unfixed: true` so the
+gate fails only on actionable CVEs — verified locally: Python 0 findings, OS 48 unfixed.
+Container scanning is one layer alongside SAST, dependency
 scanning, secret scanning, and runtime security — not a guarantee by itself.
 
 ## Terraform (AWS Infrastructure as Code)

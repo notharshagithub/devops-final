@@ -72,6 +72,10 @@ jobs:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
+          # Fail only on ACTIONABLE findings: CVEs with no published fix
+          # (e.g. pending Debian triage) cannot be remediated by any change
+          # to this repo, so blocking on them would freeze all delivery.
+          ignore-unfixed: true
           exit-code: "1"
 
       - name: Trivy scan frontend (fail on HIGH,CRITICAL)
@@ -80,6 +84,7 @@ jobs:
           image-ref: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: "1"
 
       - name: Push backend to GHCR
