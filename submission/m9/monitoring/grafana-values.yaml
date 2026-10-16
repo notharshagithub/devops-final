@@ -1,0 +1,29 @@
+# Grafana Helm values (used with kube-prometheus-stack or standalone Grafana).
+# Install standalone:
+#   helm upgrade --install grafana grafana/grafana -n monitoring --create-namespace -f monitoring/grafana-values.yaml
+# With kube-prometheus-stack, Grafana is included — see monitoring/prometheus-values.yaml.
+# Import the dashboard queries from monitoring/grafana-dashboard-notes.yaml.
+
+replicaCount: 1
+
+adminUser: admin
+adminPassword: taskboard-admin
+
+service:
+  type: ClusterIP
+  port: 80
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+# Pre-provisioned Prometheus datasource pointing at in-cluster Prometheus.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+        access: proxy
+        isDefault: true

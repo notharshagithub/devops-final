@@ -1,0 +1,23 @@
+# Grafana dashboard notes + example queries for TaskBoard.
+# Import in Grafana UI or provision via ConfigMap.
+#
+# Panels to create (all from FastAPI /metrics via prometheus-fastapi-instrumentator):
+#
+# 1. HTTP requests/sec:
+#    sum(rate(http_requests_total[5m])) by (handler)
+#
+# 2. P95 latency by endpoint:
+#    histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (handler, le))
+#
+# 3. Error rate (5xx):
+#    sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+#
+# 4. CPU vs HPA replicas:
+#    - container_cpu_usage_seconds_total{pod=~"taskboard-backend-.*"}
+#    - kube_deployment_status_replicas{deployment="taskboard-backend"}
+title: TaskBoard Application Metrics
+panels:
+  - http_requests_per_second
+  - p95_latency_by_endpoint
+  - error_rate
+  - cpu_vs_hpa_replicas

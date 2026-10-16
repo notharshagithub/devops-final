@@ -1,0 +1,20 @@
+# kube-prometheus-stack values: scrape TaskBoard via ServiceMonitor.
+# Install: helm upgrade --install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+grafana:
+  enabled: true
+  adminPassword: taskboard-admin
+  service:
+    type: ClusterIP
+  # k8s-sidecar auto-loaders disabled: manual dashboard creation is used
+  # for the capstone screenshots (avoids extra quay.io pulls).
+  sidecar:
+    dashboards:
+      enabled: false
+    datasources:
+      enabled: false

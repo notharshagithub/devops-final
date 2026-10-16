@@ -11,3 +11,10 @@ grafana:
   adminPassword: taskboard-admin
   service:
     type: ClusterIP
+  # k8s-sidecar auto-loaders disabled: manual dashboard creation is used
+  # for the capstone screenshots (avoids extra quay.io pulls).
+  sidecar:
+    dashboards:
+      enabled: false
+    datasources:
+      enabled: false
