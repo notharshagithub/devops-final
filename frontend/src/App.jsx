@@ -25,6 +25,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionError, setActionError] = useState('')
+  const [notice, setNotice] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [workspace, setWorkspace] = useState('all')
   const [search, setSearch] = useState('')
@@ -37,10 +38,11 @@ export default function App() {
     if (!quiet) setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ limit: '200' })
-      if (workspace !== 'all') params.set('workspace', workspace)
+      // Single source of truth: always fetch the FULL list.
+      // Workspace/status/search filtering happens locally so sidebar
+      // counts never shift when you click a workspace.
       const [tasksRes, statsRes] = await Promise.all([
-        fetch(`/api/tasks?${params}`),
+        fetch('/api/tasks?limit=200'),
         fetch('/api/tasks/stats')
       ])
       if (!tasksRes.ok) throw new Error(`Tasks API failed: ${tasksRes.status}`)
@@ -52,7 +54,7 @@ export default function App() {
     } finally {
       if (!quiet) setLoading(false)
     }
-  }, [workspace])
+  }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -64,16 +66,27 @@ export default function App() {
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
+      if (workspace !== 'all' && t.workspace !== workspace) return false
       if (statusFilter !== 'all' && t.status !== statusFilter) return false
       if (search && !(t.title + ' ' + (t.description || '')).toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [tasks, statusFilter, search])
+  }, [tasks, workspace, statusFilter, search])
+
+  const hasActiveFilters = workspace !== 'all' || statusFilter !== 'all' || search.trim() !== ''
+
+  function clearFilters() {
+    setWorkspace('all')
+    setStatusFilter('all')
+    setSearch('')
+    setNotice('')
+  }
 
   const activity = useMemo(() => tasks.slice(0, 6), [tasks])
 
   function pickWorkspace(w) {
     setWorkspace((prev) => (prev === w ? 'all' : w))
+    setNotice('')
   }
 
   async function handleCreate(e) {
@@ -88,9 +101,16 @@ export default function App() {
         body: JSON.stringify({ ...form, assignee: form.assignee || 'Unassigned' })
       })
       if (!res.ok) throw new Error(`Create failed: ${res.status}`)
+      const created = await res.json()
       setShowModal(false)
-      setForm(emptyForm(workspace))
+      setForm(emptyForm(created.workspace))
+      // Reveal the new row: jump to its workspace and drop any
+      // status/search filter that would hide it, then refresh quietly.
+      setWorkspace(created.workspace || 'all')
+      setStatusFilter('all')
+      setSearch('')
       await fetchAll(true)
+      setNotice(`Task #${created.id} “${created.title}” created in ${created.workspace}.`)
     } catch (err) {
       setActionError(String(err.message))
     } finally {
@@ -216,6 +236,12 @@ export default function App() {
         </section>
 
         {actionError && <div className="state error"><strong>Action failed.</strong> {actionError}</div>}
+        {notice && (
+          <div className="state success">
+            {notice}
+            <div><button className="chip" onClick={() => setNotice('')}>Dismiss</button></div>
+          </div>
+        )}
         {loading && <div className="state">Loading tasks…</div>}
         {error && !loading && (
           <div className="state error">
@@ -227,6 +253,12 @@ export default function App() {
         {!loading && !error && (
           <div className="content-grid">
             <div className="table-wrap">
+              <div className="result-line">
+                Showing {filtered.length} of {tasks.length} tasks
+                {workspace !== 'all' && <> in {workspace}</>}
+                {statusFilter !== 'all' && <> with status {STATUS_LABELS[statusFilter]}</>}
+                {search.trim() !== '' && <> matching “{search.trim()}”</>}
+              </div>
               <table className="tasks">
                 <thead>
                   <tr><th>Task</th><th>Status</th><th>Priority</th><th>Workspace</th><th>Assignee</th><th></th></tr>
@@ -256,7 +288,17 @@ export default function App() {
                   ))}
                 </tbody>
               </table>
-              {filtered.length === 0 && <div className="state">No tasks match this filter.</div>}
+              {filtered.length === 0 && (
+                <div className="state">
+                  No tasks match the current filters
+                  {workspace !== 'all' && <> (workspace: {workspace})</>}
+                  {statusFilter !== 'all' && <> (status: {STATUS_LABELS[statusFilter]})</>}
+                  {search.trim() !== '' && <> (search: “{search.trim()}”)</>}.
+                  {hasActiveFilters && (
+                    <div><button className="chip" onClick={clearFilters}>Clear all filters</button></div>
+                  )}
+                </div>
+              )}
             </div>
 
             <aside className="feed">
