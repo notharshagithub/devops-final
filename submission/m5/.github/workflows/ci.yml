@@ -3,8 +3,20 @@ name: TaskBoard CI/CD
 on:
   push:
     branches: [main]
+    # Docs/evidence-only commits must not burn a full build+scan+push cycle.
+    # Code, Docker, Helm, Terraform, and workflow changes still trigger.
+    paths-ignore:
+      - "README.md"
+      - "submission/**"
+      - "monitoring/grafana-dashboard-notes.yaml"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "submission/**"
+      - "monitoring/grafana-dashboard-notes.yaml"
+  # Manual runs from the Actions tab ("Run workflow").
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
