@@ -1,0 +1,25 @@
+# Python / venv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+backend/test_taskboard.db
+
+# Env / secrets - NEVER commit credentials (M7 grading rejects secrets in history)
+.env
+*.pem
+*.key
+terraform.tfvars
+terraform/*.tfvars
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Docker / misc
+*.log
+.DS_Store
