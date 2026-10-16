@@ -1,0 +1,38 @@
+# Frontend Nginx config for Kubernetes: routes /api to the backend Service.
+# (docker-compose uses frontend/nginx.conf instead, where the service is named `backend`.)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-frontend-conf
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # Resolve at request time so Nginx boots even if the backend
+      # Service endpoints are not ready yet.
+      resolver kube-dns.kube-system.svc.cluster.local valid=10s;
+      set $backend {{ .Release.Name }}-backend:8000;
+
+      location /api/ {
+        proxy_pass http://$backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+      }
+      location = /api/tasks/stats {
+        proxy_pass http://$backend;
+      }
+      location /health {
+        proxy_pass http://$backend;
+      }
+      location /ready {
+        proxy_pass http://$backend;
+      }
+
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+    }

@@ -14,12 +14,20 @@ spec:
       labels:
         app: taskboard-frontend
     spec:
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: {{ .Release.Name }}-frontend-conf
       containers:
         - name: frontend
           image: "{{ .Values.images.frontend.repository }}:{{ .Values.images.frontend.tag }}"
           imagePullPolicy: {{ .Values.images.frontend.pullPolicy }}
           ports:
             - containerPort: {{ .Values.frontend.port }}
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }
