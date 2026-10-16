@@ -14,7 +14,7 @@ manifests for troubleshooting practice.
 This is an original implementation (FastAPI + SQLAlchemy 2.0 mapped classes, hand-written Helm
 chart, Vite + Nginx routing). It follows the Session 21 architecture for the DevOps layer, with
 all application code authored in this repository.
-
+/
 ```
 Developer
    |
@@ -431,15 +431,126 @@ the Postgres `tasks` table. 4. Commit a small change. 5. Watch the Actions pipel
 | AWS region | `ap-south-1` | Terraform |
 | Grafana | `admin` / `taskboard-admin` | monitoring values |
 
-## Grading map (M1–M10) and evidence
+## Evidence screenshots
 
-- **M1 (10)** app: `backend/app/`, `backend/alembic/versions/`, `requirements.txt`, `frontend/`, `docker-compose.yml`, browser screenshot → `submission/m1/`
-- **M2 (10)** tests: `backend/tests/` (13 tests), `pytest.ini` + `conftest.py` (isolated SQLite), `pytest -v` screenshot → `submission/m2/`
-- **M3 (5)** git: public repo URL, 30+ meaningful commits, `.gitignore` (`.env`, `__pycache__`, `node_modules`, `.venv`) → `submission/m3/`
-- **M4 (10)** docker: non-root backend Dockerfile, multi-stage frontend Dockerfile, 3-service compose, `compose up` + browser screenshots → `submission/m4/`
-- **M5 (15)** pipeline: `.github/workflows/` → `submission/m5/` (+ green run URL, GHCR SHA-tag screenshots)
-- **M6 (5)** trivy: scan steps in workflow, scan screenshot, `submission/m6/explanation.txt`
-- **M7 (15)** terraform: `terraform/*.tf` + `tfvars.example`, no secrets → `submission/m7/` (+ plan/apply/destroy + console screenshots)
-- **M8 (15)** k8s: `k8s/` + `helm/` chart, 2 replicas each, ClusterIP, Ingress `/` + `/api`, all pods Running → `submission/m8/` (+ pods/svc/helm-list/Ingress screenshots)
-- **M9 (10)** observability: `/metrics`, `monitoring/` values, Targets UP + Grafana panel screenshots → `submission/m9/`
-- **M10 (5)**: this README + live demo (recorded only if remote)
+Each image below is stored under `submission/` and tagged with its module.
+
+### M1 — running application
+
+![M1 dashboard with tasks, filters and activity](submission/m1/Screenshot_2026-10-16_12-02-47.png)
+*M1 — dashboard at `localhost:3000`: KPIs, status filter with search, task table, activity feed.*
+
+![M1 full board across workspaces](submission/m1/Screenshot_2026-10-16_12-06-49.png)
+*M1 — full board: 5 tasks across Platform Team / DevOps Capstone / Sprint 21 with badges.*
+
+Additional M1 dashboard views: `submission/m1/Screenshot_2026-10-16_12-02-54.png`,
+`submission/m1/Screenshot_2026-10-16_12-03-00.png`,
+`submission/m1/Screenshot_2026-10-16_12-03-19.png`.
+
+### M2 — pytest green
+
+![M2 13 passed](submission/m2/backend/Screenshot_2026-10-16_12-13-05.png)
+*M2 — `pytest -v`: 13 passed covering health, metrics, CRUD, stats and filters (isolated SQLite DB).*
+Second angle: `submission/m2/backend/Screenshot_2026-10-16_12-13-12.png`.
+
+### M3 — commit history
+
+![M3 meaningful commits](submission/m3/Screenshot_2026-10-16_12-15-57.png)
+*M3 — `git log --oneline`: 25+ meaningful `feat/fix/docs/test` commits, never "update".*
+
+### M4 — Docker stack
+
+![M4 compose up build](submission/m4/Screenshot_2026-10-16_13-02-50.png)
+*M4 — `docker compose up --build`: postgres pulled, both images built, all containers created.*
+
+![M4 app on localhost:3000](submission/m4/Screenshot_2026-10-16_13-08-15.png)
+*M4 — dashboard served from the containerized stack at `localhost:3000`.*
+
+### M5 — green pipeline and registry
+
+![M5 green Actions run](submission/m5/Screenshot_2026-10-16_13-30-39.png)
+*M5 — TaskBoard CI/CD run Success: Test, Build + Trivy scan + Push to GHCR, Deploy via Helm.*
+
+![M5 GHCR SHA tags](submission/m5/Screenshot_2026-10-16_13-36-02.png)
+*M5 — GHCR `taskboard-backend` package page: immutable commit-SHA tags, no `latest`.*
+
+### M6 — Trivy gate
+
+![M6 Trivy scan job](submission/m6/Screenshot_2026-10-16_13-37-31.png)
+*M6 — Trivy scan steps passing on both images (`HIGH,CRITICAL`, actionable findings only).*
+Written explanation: `submission/m6/explanation.txt`.
+
+### M8 — app through Ingress
+
+![M8 Ingress dashboard](submission/m9/Screenshot_2026-10-16_15-39-04.png)
+*M8 — dashboard served through Ingress at `http://taskboard.local/` (stored under M9 folder).*
+
+### M9 — observability
+
+![M9 metrics endpoint](submission/m9/Screenshot_2026-10-16_15-54-39.png)
+*M9 — `curl <backend>/metrics`: Prometheus exposition (`HELP`/`TYPE` + samples).*
+
+![M9 Prometheus target UP](submission/m9/Screenshot_2026-10-16_15-57-34.png)
+*M9 — Prometheus Targets: `serviceMonitor/taskboard/taskboard-backend/0`, 2/2 UP.*
+
+Still to capture: Grafana dashboard panel with a live query (e.g.
+`sum(rate(http_requests_total[5m])) by (handler)`) → save into `submission/m9/`.
+Pending cluster shots: M7 (`terraform plan`, AWS console, `terraform destroy`) and M8
+(`kubectl get pods/svc`, `helm list`) — captured during those live sessions.
+
+## Quick start
+
+### Option A: Docker Compose (fastest)
+```bash
+cd /home/harsha/Documents/devops/proj2
+docker compose up --build
+```
+- App: http://localhost:3000
+- API docs: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+- Metrics: http://localhost:8000/metrics
+
+Stop with `docker compose down`.
+
+### Option B: Kubernetes (minikube)
+```bash
+# 1) Build images
+docker build -t taskboard-backend:local ./backend
+docker build -t taskboard-frontend:local ./frontend
+
+# 2) Load into minikube
+minikube image load taskboard-backend:local
+minikube image load taskboard-frontend:local
+
+# 3) Deploy with Helm
+helm upgrade --install taskboard ./helm/taskboard -n taskboard --create-namespace \
+  --set images.backend.repository=taskboard-backend --set images.backend.tag=local \
+  --set images.frontend.repository=taskboard-frontend --set images.frontend.tag=local
+
+# 4) Verify
+kubectl get pods -n taskboard
+# Wait until all pods are Running
+
+# 5) Access via Ingress (add to /etc/hosts if needed)
+echo "$(minikube ip) taskboard.local" | sudo tee -a /etc/hosts
+# App: http://taskboard.local/
+# API: http://taskboard.local/api/tasks/stats
+```
+
+## Grading map (points)
+
+| Module | Item | Points |
+|--------|------|--------|
+| M1 | Running application (backend, frontend, compose) | 10 |
+| M2 | Test suite (13 tests) | 10 |
+| M3 | Git history, .gitignore | 5 |
+| M4 | Dockerfiles, compose | 10 |
+| M5 | CI/CD workflow | 15 |
+| M6 | Trivy scan explanation | 5 |
+| M7 | Terraform | 15 |
+| M8 | Kubernetes (Helm, Ingress) | 15 |
+| M9 | Observability (metrics, targets, Grafana) | 10 |
+| M10 | README + demo | 5 |
+| **Total** | | **100** |
+
+Detailed evidence for each module is available in the corresponding `submission/mX/` directories.
