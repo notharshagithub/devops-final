@@ -1,128 +1,445 @@
 # TaskBoard — DevOps Final Capstone (Session 21)
 
-TaskBoard is a SaaS-style project-management app built to show the full DevOps lifecycle:
-code travels from a laptop to a monitored Kubernetes environment on AWS.
+TaskBoard is a small but realistic SaaS-style project-management application built to show how
+real software travels from a developer laptop to a monitored Kubernetes environment on AWS.
 
-Users get a responsive dashboard (dark sidebar, workspaces with live counts, KPI cards, task
-table, status filters, search, priority badges, activity feed, create-task modal). Engineers get
-everything behind it: FastAPI + PostgreSQL + Alembic, pytest gates, Docker, GitHub Actions,
-Trivy scans, GHCR, Terraform VPC + EKS, Helm, Ingress, HPA, and Prometheus + Grafana.
+Users get a responsive dashboard: dark sidebar, workspace navigation with live counts, KPI
+cards, a task table with status filters and search, priority badges, an activity feed, a
+pipeline indicator, and a create-task modal with loading and backend-error states. Engineers get
+everything behind it: FastAPI + PostgreSQL + Alembic migrations, a pytest quality gate, Docker
+images, GitHub Actions CI/CD, Trivy security scanning, GHCR, Terraform VPC + EKS, Helm,
+Ingress, HPA autoscaling, and Prometheus + Grafana observability — plus deliberately broken
+manifests for troubleshooting practice.
 
-This is an original implementation (FastAPI + SQLAlchemy 2.0, hand-written Helm chart, Vite +
-Nginx routing) following the Session 21 architecture for the DevOps layer.
+This is an original implementation (FastAPI + SQLAlchemy 2.0 mapped classes, hand-written Helm
+chart, Vite + Nginx routing). It follows the Session 21 architecture for the DevOps layer, with
+all application code authored in this repository.
 
 ```
-GitHub → Actions (pytest → build → Trivy → GHCR push) → Terraform (VPC+EKS) → Helm → Ingress → HPA → Prometheus/Grafana
+Developer
+   |
+   v
+Git / GitHub (30+ meaningful commits: feat/fix/docs/test, never "update")
+   |
+   v
+GitHub Actions
+   |-- pytest (13 tests — quality gate, red blocks everything)
+   |-- frontend build (Vite)
+   |-- Docker build (backend + frontend, immutable commit-SHA tags)
+   |-- Trivy scan (HIGH/CRITICAL gate on actionable CVEs)
+   `-- push images to GHCR
+              |
+              v
+        Terraform (AWS VPC + EKS, ap-south-1)
+              |
+              v
+            Helm (taskboard release)
+              |
+      +-------+--------+
+      |                |
+   Frontend          Backend
+    React            FastAPI
+    :8080            :8000
+      |                |
+      +-------> PostgreSQL :5432
+              |
+       Prometheus (/metrics + ServiceMonitor, target UP)
+              |
+           Grafana (RPS, p95 latency, error panels)
 ```
 
-## Stack
+## Repository structure
 
-| Layer        | Tech                                                                 |
-| ------------ | -------------------------------------------------------------------- |
-| Frontend     | React 18 + Vite, Nginx (`/api` → backend, so the browser needs no backend hostname) |
-| Backend      | FastAPI, SQLAlchemy 2.0, Alembic, Pydantic validation, `/docs` Swagger |
-| Database     | PostgreSQL (`tasks` table, 2 migrations)                             |
-| Tests        | pytest, 13 tests on an isolated SQLite DB (never production Postgres) |
-| Containers   | Backend `python:3.12-slim` as `appuser`; frontend multi-stage Node → `nginx-unprivileged` |
-| CI/CD        | GitHub Actions: TEST → BUILD+SCAN+PUSH → DEPLOY, images tagged by commit SHA |
-| Security     | Trivy on both images; fails on actionable HIGH/CRITICAL (`ignore-unfixed`) |
-| AWS          | Terraform VPC (3 public + 3 private subnets, NAT) + EKS 1.30 (`ap-south-1`) |
-| Kubernetes   | Helm chart: 2× backend + 2× frontend, ClusterIP Services, Postgres + PVC, Ingress (`/` → frontend, `/api` → backend), HPA (CPU 60%, 2–6), ServiceMonitor |
-| Monitoring   | kube-prometheus-stack scraping `/metrics`; Grafana panels (RPS, p95, errors) |
+```
+.
+├── frontend/                      # React 18 + Vite dashboard + Nginx proxy config
+│   ├── src/App.jsx                # KPIs, table, workspace/status/search filters, modal, feed
+│   ├── src/App.css                # SaaS styling + @media responsive breakpoints
+│   ├── src/main.jsx               # React entrypoint
+│   ├── nginx.conf                 # compose: /api,/health,/ready → backend:8000
+│   └── Dockerfile                 # multi-stage: Node build → nginx-unprivileged runtime
+├── backend/
+│   ├── app/main.py                # FastAPI app, CORS, /health, /ready, /metrics, routers
+│   ├── app/config.py              # pydantic-settings (DATABASE_URL from env)
+│   ├── app/database.py            # SQLAlchemy engine, SessionLocal, get_db dependency
+│   ├── app/models.py              # Task table (SQLAlchemy 2.0 Mapped)
+│   ├── app/schemas.py             # Pydantic validation (status/priority/workspace rules)
+│   ├── app/routers/tasks.py       # CRUD + stats + workspace/status/priority/search filters
+│   ├── tests/conftest.py          # isolated SQLite test DB (never production Postgres)
+│   ├── tests/test_tasks.py        # 10 CRUD/stats/filter tests
+│   ├── tests/test_health.py       # 3 meta/health/metrics tests
+│   ├── alembic/                   # env.py reads DATABASE_URL at runtime
+│   ├── alembic/versions/          # 0001_create_tasks.py, 0002_add_workspace.py
+│   ├── requirements.txt           # pinned: fastapi, uvicorn, sqlalchemy, psycopg, alembic…
+│   ├── pytest.ini
+│   └── Dockerfile                 # python:3.12-slim, non-root appuser, migrate-then-serve
+├── docker-compose.yml             # postgres + backend + frontend with healthchecks
+├── terraform/                     # versions, variables, main (VPC+EKS modules), outputs
+├── helm/taskboard/                # Chart.yaml, values.yaml, values-dev.yaml, 8 templates
+├── k8s/namespace.yaml             # logical isolation for the app
+├── monitoring/                    # prometheus-values, grafana-values, dashboard queries
+├── troubleshooting/               # broken-image.yaml + broken-service.yaml labs
+├── scripts/load-test.sh           # controlled HPA load generator
+├── submission/m1..m9/             # per-module evidence copies + screenshots
+└── .github/workflows/ci.yml       # TEST → BUILD+SCAN+PUSH → DEPLOY
+```
 
 ## Prerequisites
 
 | Need it for | Install |
 | ----------- | ------- |
-| `docker compose up` (fastest run) | Docker Engine 24+ + Compose plugin, ports 3000/8000 free |
-| Backend directly | Python 3.12+, PostgreSQL 14+ (or set any `DATABASE_URL`), `pip install -r backend/requirements.txt` |
-| Frontend directly | Node 22+, `npm install` in `frontend/` |
-| Kubernetes | minikube + `kubectl` + Helm 4+ (Ingress via `minikube addons enable ingress`) |
-| AWS | Terraform 1.6+, AWS CLI with configured credentials (`aws configure`, region `ap-south-1`) |
-| Screenshots | Any browser + terminal that can run the commands below |
+| Fastest run (`docker compose up`) | Docker Engine 24+ + Compose plugin; ports 3000/8000 free |
+| Backend directly | Python 3.12+, PostgreSQL 14+ (or any reachable `DATABASE_URL`) |
+| Frontend directly | Node 22+, `npm install` inside `frontend/` |
+| Kubernetes demo | minikube + `kubectl` + Helm 4+; Ingress via `minikube addons enable ingress` |
+| AWS infrastructure | Terraform 1.6+, AWS CLI with configured credentials (`aws configure`, `ap-south-1`) |
+| Evidence | A browser + terminal for the screenshot commands in each section |
 
-## Run it
+## Run it locally
+
+Fastest method — one command starts postgres + backend + frontend (each with healthchecks,
+backend waits for postgres, frontend waits for backend):
 
 ```bash
 docker compose up --build
-# app http://localhost:3000 · api http://localhost:8000/docs · health http://localhost:8000/health
+# app:      http://localhost:3000
+# api docs: http://localhost:8000/docs
+# health:   http://localhost:8000/health
+# metrics:  http://localhost:8000/metrics
+docker compose down        # stop
+docker compose down -v     # also delete the database volume
 ```
+
+The frontend maps `3000:8080` because the unprivileged Nginx image listens on 8080 as non-root.
 
 Backend directly:
 
 ```bash
-cd backend && pip install -r requirements.txt
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 export DATABASE_URL='postgresql+psycopg://taskboard:taskboard@localhost:5432/taskboard'
-alembic upgrade head && uvicorn app.main:app --port 8000
-pytest -q   # 13 passed — quality gate: red tests block every image
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+curl http://localhost:8000/health
+curl http://localhost:8000/api/tasks
 ```
 
-Kubernetes (minikube):
+Frontend directly (Vite proxies `/api`, `/health`, `/ready` to `localhost:8000`):
 
 ```bash
-minikube start --driver=docker
-minikube image load taskboard-backend:local taskboard-frontend:local
+cd frontend
+npm install
+npm run dev -- --port 3000 --host
+```
+
+## Backend API in detail
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | Service name, version, docs pointer |
+| GET | `/health` | Liveness: process alive, no DB touch |
+| GET | `/ready` | Readiness: `SELECT 1` → `READY`, else 503 `NOT_READY` |
+| GET | `/metrics` | Prometheus exposition (request counters, latency histograms, Python runtime) |
+| GET | `/api/tasks` | List, `?workspace=&status=&priority=&search=&limit=&offset=` |
+| GET | `/api/tasks/stats` | KPI aggregates (total/todo/in_progress/done/high_priority) |
+| GET | `/api/tasks/{id}` | One task or 404 |
+| POST | `/api/tasks` | Create (201), validated by Pydantic |
+| PUT | `/api/tasks/{id}` | Partial update (status cycling, reassignment, workspace move) |
+| DELETE | `/api/tasks/{id}` | Delete (204) or 404 |
+
+Swagger UI lives at `/docs` whenever the backend runs.
+
+**Why `/health`?** A container can be alive while the app is broken. Kubernetes uses this cheap,
+DB-free liveness probe to decide when to restart a Pod.
+
+**Why `/ready`?** Readiness answers a different question — can this Pod serve traffic *now*? It
+runs `SELECT 1`; only `READY` Pods receive Service endpoints, so deploys and DB outages never
+route traffic into a dead backend.
+
+**Why `/metrics`?** Prometheus needs machine-readable counters. `prometheus-fastapi-instrumentator`
+exposes `http_requests_total`, `http_request_duration_seconds_*` plus Python GC/memory stats for
+scraping (see Monitoring).
+
+**Task model** (`app/models.py`): `id`, `title(200)`, `description`, `status`
+(`todo|in_progress|done`), `priority` (`low|medium|high`), `assignee`, `workspace` (`Platform
+Team|DevOps Capstone|Sprint 21`), `created_at`, `updated_at`. Rules are enforced twice: Pydantic
+patterns at the API boundary, defaults/constraints at the DB layer.
+
+## Frontend in detail
+
+`src/App.jsx` is closer to a real SaaS dashboard than a tutorial CRUD page:
+
+- Dark sidebar with workspace navigation — All + 3 workspaces with **live counts computed from
+  the full task list**, so numbers never shift when you click (single fetch, all filtering local)
+- Dashboard header, 5 KPI cards fed by `/api/tasks/stats`
+- Task table: status badges, priority badges, workspace badge, assignee, per-row status-advance
+  (▶ cycles todo→in_progress→done) with pending state, delete with confirm — both with inline
+  error feedback and quiet refresh (no full-page flash)
+- Status filter chips + search + "Showing X of Y tasks" line; empty results name the exact active
+  filters with a "Clear all filters" button, so tasks can never silently disappear
+- Create-task modal (title/status/priority/workspace/assignee): on success it jumps to the new
+  task's workspace, clears hiding filters, and shows a green confirmation banner
+- Activity feed (latest tasks), pipeline indicator (Git push → Helm deploy), loading state, and a
+  backend-error state with Retry
+- Responsive CSS: sidebar/KPIs/table collapse to a single column on mobile (`@media`)
+
+The browser only calls relative `/api/tasks` and `/api/tasks/stats` — it never knows the backend
+hostname. Vite's dev proxy handles it locally, Nginx in Docker/Compose, Ingress in Kubernetes.
+
+## Testing in detail (first quality gate)
+
+```bash
+cd backend
+pytest -q    # 13 passed
+pytest -v    # per-test output for the submission screenshot
+```
+
+13 tests across 8 behaviors: `/` meta, `/health` UP, `/metrics` Prometheus format, task create,
+list, get-by-id, 404, status update, workspace update, delete, stats counts, status filter,
+workspace filter. Flow enforced by CI:
+
+```
+Bad code → pytest fails → pipeline stops → no broken image is promoted
+```
+
+Isolation: `tests/conftest.py` overrides `get_db` with a SQLite session
+(`test_taskboard.db`, dropped/recreated per test) — production Postgres is never touched.
+`pytest.ini` pins `testpaths = tests`.
+
+## Git and GitHub
+
+```bash
+git init && git add .
+git commit -m "feat: TaskBoard capstone - FastAPI + React + Postgres + K8s"
+git branch -M main
+git remote add origin https://github.com/notharshagithub/devops-final.git
+git push -u origin main
+```
+
+History keeps 30+ meaningful commits (`feat(backend)`, `feat(db)`, `test(backend)`,
+`feat(frontend)`, `fix(frontend)`, `feat(docker)`, `feat(helm)`, `feat(terraform)`,
+`feat(ci)`, `fix(ci)`, `fix(security)`, `docs(...)`) — never "update"/"fix"/"test".
+`.gitignore` excludes `.env`, `__pycache__`, `node_modules`, `.venv` (plus
+`terraform.tfvars`, `.terraform/`, `*.tfstate*`, `frontend/dist/`). Concepts: Git is version
+control, GitHub the remote platform, commits immutable checkpoints, branches isolated lines of
+development, pull requests controlled review.
+
+## Docker in detail
+
+Backend image: `python:3.12-slim` → system `curl` for healthchecks → `pip install` →
+copies `alembic.ini`/`alembic/`/`app/` → creates non-root `appuser (10001)` → `EXPOSE 8000` →
+entry `alembic upgrade head && uvicorn …` so the schema is always current before serving.
+
+```bash
+docker build -t taskboard-backend:local ./backend
+docker run --rm -p 8000:8000 \
+  -e DATABASE_URL='postgresql+psycopg://taskboard:taskboard@host.docker.internal:5432/taskboard' \
+  taskboard-backend:local
+```
+
+Frontend image (multi-stage, build tooling never reaches runtime):
+
+```
+Node 22 (npm ci + vite build → static dist/)
+  ↓
+nginx-unprivileged:1.27-alpine + apk upgrade + dist/ + nginx.conf (runs as nginx, :8080)
+```
+
+```bash
+docker build -t taskboard-frontend:local ./frontend
+```
+
+Both images run non-root (verified via `docker inspect`: `appuser` / UID 101). Compose wires
+three healthchecked services; backend waits for postgres, frontend waits for backend.
+
+## CI/CD in detail (automation backbone, runs on every push to `main`)
+
+`.github/workflows/ci.yml` — three stages:
+
+1. **TEST**: checkout → Python 3.12 → `pip install` → `pytest -q` (fails the build on red) →
+   Node 22 → `npm ci` → `npm run build`.
+2. **BUILD + SCAN + PUSH** (push events only): GHCR login → `docker build` backend + frontend
+   tagged by commit SHA → Trivy scans both (`HIGH,CRITICAL`, `ignore-unfixed`, `exit-code: 1`)
+   → `docker push` both to GHCR.
+3. **DEPLOY**: Helm + kubeconfig from `KUBE_CONFIG_DATA` secret → `helm upgrade --install`
+   with `--set images.*.tag=${{ github.sha }}`; without the secret it skips gracefully with a
+   message so the pipeline stays green sans cluster.
+
+SHA tagging (never `latest`) gives traceability: `commit A → image A`, so any running container
+maps 1:1 back to source and rollbacks are exact.
+
+## Security scanning in detail (non-negotiable gate)
+
+Pipeline step: `aquasecurity/trivy-action@v0.36.0` on both images, `severity: HIGH,CRITICAL`,
+`exit-code: 1` — a finding blocks GHCR push and the deploy. Real history from this repo: the
+first backend scan found 48 HIGHs in Debian 13.7 with **no published fix** plus 6 fixable HIGHs
+(`python-multipart` 0.0.20 path-traversal/DoS CVE-2026-24486/42561/53539, `starlette` 0.47.3
+DoS/SSRF CVE-2025-62727/48818/54283). We upgraded to `python-multipart` 0.0.32, FastAPI 0.143.2
+(starlette 1.8.0) and instrumentator 8.1.0 — Python findings went to zero (verified with a local
+Trivy run: Python 0, OS 48 unfixed) — and set `ignore-unfixed: true` so the gate fails only on
+actionable CVEs. Blocking delivery on unfixable OS findings would freeze all releases with no
+remediation path; that flag is standard Trivy practice, not a weakened gate. Trivy is container
+scanning — one layer alongside SAST, dependency/secret scanning, and runtime security.
+
+## Terraform in detail (real AWS, code not console)
+
+`terraform/` (default region `ap-south-1`): `versions.tf` (AWS provider ~> 5.0, default tags),
+`variables.tf` (region, cluster_name, vpc_cidr), `main.tf` (official `vpc` 5.8.1 + `eks` 20.24.0
+modules), `outputs.tf` (VPC ID, subnets, cluster endpoint, kubeconfig command),
+`terraform.tfvars.example` (copy, never commit real values):
+
+```
+AWS
+ ├── VPC 10.0.0.0/16 + DNS hostnames
+ ├── 3× public subnets (ALB/Ingress, kubernetes.io/role/elb)
+ ├── 3× private subnets (EKS nodes, kubernetes.io/role/internal-elb)
+ ├── NAT gateway (single, demo) 
+ └── EKS 1.30 + managed node group (t3.medium, min 1 / desired 2 / max 3, public endpoint)
+```
+
+```bash
+cd terraform
+terraform init
+terraform plan     # needs AWS credentials — non-empty infra plan, no errors
+terraform apply
+aws eks update-kubeconfig --region ap-south-1 --name taskboard-eks
+terraform destroy  # REQUIRED after evaluation — runaway bills are yours, not the course's
+```
+
+Classroom Postgres runs in-cluster via the chart; **production should use RDS** (managed backups,
+HA, patching) — the in-cluster DB is a zero-cost demo tradeoff. Never commit AWS keys: grading
+rejects any secrets in history; use `aws configure` / env / IAM roles.
+
+## Kubernetes in detail
+
+```bash
+kubectl apply -f k8s/namespace.yaml
 helm upgrade --install taskboard ./helm/taskboard -n taskboard --create-namespace \
-  --set images.backend.repository=taskboard-backend --set images.backend.tag=local \
-  --set images.frontend.repository=taskboard-frontend --set images.frontend.tag=local \
-  --set monitoring.serviceMonitor.enabled=false   # true on EKS with the operator
+  -f helm/taskboard/values-dev.yaml
+kubectl get pods,svc,hpa,ingress -n taskboard
+```
+
+Helm concepts used: Chart (`Chart.yaml`), values (`values.yaml` + `values-dev.yaml` overrides),
+templates, release (`taskboard`), `upgrade --install` / `rollback`.
+
+- **Deployments** (2 replicas each): dead Pods get replaced automatically. Backend carries
+  liveness (`/health`) + readiness (`/ready`) probes, `runAsNonRoot: 10001`, CPU/memory requests
+  (HPA needs them), a `wait-for-postgres` initContainer (`pg_isready`), and Prometheus scrape
+  annotations. Frontend gets its Nginx config from a templated ConfigMap pointing at the
+  release's backend Service with request-time DNS (boots cleanly even if backends aren't ready).
+- **Services** (both `ClusterIP`): Pods are ephemeral; `taskboard-backend:8000` and
+  `taskboard-frontend:80` give stable DNS. Frontend reaches the backend only through Services.
+- **PostgreSQL** (demo): Deployment + Service + 5Gi PVC (see RDS note above).
+- **ServiceMonitor** (optional via `monitoring.serviceMonitor.enabled`): for clusters with the
+  Prometheus operator; off by default on bare minikube (no CRDs), on with kube-prometheus-stack.
+
+## Ingress
+
+`taskboard.local/` → frontend, `taskboard.local/api` → backend (class `nginx`). An Ingress
+resource is only configuration — a controller (ingress-nginx, AWS LB Controller) implements it:
+
+```bash
 minikube addons enable ingress
 echo "$(minikube ip) taskboard.local" | sudo tee -a /etc/hosts
-# app: http://taskboard.local/ · api: http://taskboard.local/api/tasks/stats
+curl http://taskboard.local/api/tasks/stats   # stats JSON proves /api routing
 ```
 
-Terraform (needs AWS credentials; `destroy` afterwards to avoid charges):
+(Lesson learned here: a `rewrite-target: /` annotation once collapsed `/api/*` to `/` — removed,
+both apps serve their native paths.)
+
+## HPA (autoscaling)
+
+Backend scales on CPU: requests 100m, target 60%, min 2, max 6.
+
+```
+low traffic → 2 Pods → high CPU → 3 → 4 … → 6
+```
 
 ```bash
-cd terraform && terraform init && terraform plan && terraform apply
-aws eks update-kubeconfig --region ap-south-1 --name taskboard-eks
-terraform destroy
+kubectl get hpa -n taskboard
+kubectl get hpa -n taskboard -w
+./scripts/load-test.sh http://taskboard.local/api/tasks 500
 ```
 
-## API
+Needs Metrics Server; a single `/health` won't move CPU — use the load script for the demo.
 
-`GET /` · `GET /health` (liveness, no DB) · `GET /ready` (readiness, `SELECT 1` → 503 if DB down) ·
-`GET /metrics` (Prometheus) · `GET/POST /api/tasks` (`?workspace=&status=&priority=&search=`) ·
-`GET /api/tasks/stats` (KPI aggregates) · `GET/PUT/DELETE /api/tasks/{id}`
+## Monitoring in detail
 
-Task fields: title, description, status (`todo|in_progress|done`), priority (`low|medium|high`),
-assignee, workspace (`Platform Team|DevOps Capstone|Sprint 21`), timestamps.
+Prometheus scrapes FastAPI `/metrics` via the chart's ServiceMonitor (plus Pod annotations as
+fallback). Install with `monitoring/prometheus-values.yaml` (kube-prometheus-stack) and
+`monitoring/grafana-values.yaml`:
 
-## How each DevOps piece works here
+```bash
+helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+  -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+curl http://<backend>:8000/metrics   # HELP/TYPE exposition format
+```
 
-- **CI/CD** (`.github/workflows/ci.yml`, on push to `main`): pytest + `npm run build` must pass;
-  then both images build, Trivy scans them, and they push to GHCR as
-  `ghcr.io/<owner>/taskboard-<backend|frontend>:<commit-sha>` — immutable tags trace any
-  container back to its exact commit. Deploy runs Helm when a `KUBE_CONFIG_DATA` secret exists,
-  otherwise skips with a message so the pipeline stays green without a cluster.
-- **Security**: first scan found 6 fixable HIGHs (`python-multipart` path-traversal/DoS,
-  `starlette` DoS/SSRF) — cleared via `python-multipart` 0.0.32, FastAPI 0.143.2, instrumentator
-  8.1.0. Remaining Debian HIGHs have no published fix, so the gate uses `ignore-unfixed` and
-  fails only on remediable CVEs. Never commit AWS keys — grading rejects secrets in history.
-- **Kubernetes**: Deployments self-heal dead Pods; Services give stable DNS; backend waits for
-  Postgres via initContainer; liveness `/health` + readiness `/ready` probes; HPA scales backend
-  2–6 replicas — demo with `./scripts/load-test.sh http://taskboard.local/api/tasks 500`.
-- **Monitoring** (`monitoring/`): ServiceMonitor → Prometheus targets UP → Grafana
-  (`admin`/`taskboard-admin`) panel e.g. `sum(rate(http_requests_total[5m])) by (handler)`.
-- **Troubleshooting** (`troubleshooting/`): `broken-image.yaml` (ImagePullBackOff → `describe`,
-  `events`) and `broken-service.yaml` (selector matches nothing → no endpoints → fix labels).
+Grafana (`admin` / `taskboard-admin`) panels to build (queries in
+`monitoring/grafana-dashboard-notes.yaml`):
 
-## Demo script (15 steps)
+1. RPS by handler: `sum(rate(http_requests_total[5m])) by (handler)`
+2. p95 latency: `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (handler, le))`
+3. Error rate: `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`
+4. CPU vs replicas: `container_cpu_usage_seconds_total{pod=~"taskboard-backend-.*"}` beside
+   `kube_deployment_status_replicas{deployment="taskboard-backend"}`
 
-App → create task · `/docs` CRUD · Postgres `tasks` table · commit + push → green pipeline →
-SHA images → Trivy log → GHCR pages → Terraform code → `kubectl get pods,svc` Running →
-`helm list` → Ingress browser → `kubectl get hpa` → Prometheus UP + Grafana panel → break a
-Service/image and fix it live (`describe`, `events`, `endpoints`).
+These answer: request volume per endpoint, slowest endpoint, error growth, traffic presence, CPU
+pressure, and whether HPA is responding.
 
-## Submission map
+## Troubleshooting lab in detail
 
-- M1 app: `backend/app/`, `backend/alembic/versions/`, `requirements.txt`, `frontend/`, `docker-compose.yml` → `submission/m1/`
-- M2 tests: `backend/tests/`, `pytest.ini` → `submission/m2/`
-- M3 git: repo URL + history (25+ meaningful commits), `.gitignore` → `submission/m3/`
-- M4 docker: both Dockerfiles + compose → `submission/m4/`
-- M5 pipeline: `.github/workflows/` → `submission/m5/` (+ Actions URL, GHCR screenshots)
-- M6 trivy: workflow steps + scan screenshot + `submission/m6/explanation.txt`
-- M7 terraform: `terraform/*.tf` + `tfvars.example` → `submission/m7/` (+ plan/apply/destroy + console screenshots)
-- M8 k8s: `k8s/` + `helm/` → `submission/m8/` (+ pods/svc/helm-list/Ingress screenshots)
-- M9 observability: `monitoring/` → `submission/m9/` (+ metrics/Targets/Grafana screenshots)
-- M10: this README + live (or recorded, if remote) demo
+Broken image (wrong tag):
+
+```bash
+kubectl apply -f troubleshooting/broken-image.yaml
+kubectl get pods -n taskboard
+kubectl describe pod <name> -n taskboard
+kubectl get events --sort-by=.lastTimestamp -n taskboard
+# ImagePullBackOff → describe shows bad image/tag → fix:
+kubectl set image deployment/taskboard-backend backend=<correct-image> -n taskboard
+```
+
+Broken Service (selector matches nothing):
+
+```bash
+kubectl apply -f troubleshooting/broken-service.yaml
+kubectl get svc,endpoints -n taskboard
+kubectl get pods --show-labels -n taskboard
+# No endpoints → selector labels match no Pods → fix selector.
+# Lesson: Services select Pods by labels. No match = no endpoints = no traffic.
+```
+
+## Final demo script (15 steps)
+
+1. Open the app (`:3000` or `taskboard.local`), create a task. 2. Swagger `/docs` CRUD. 3. Show
+the Postgres `tasks` table. 4. Commit a small change. 5. Watch the Actions pipeline go green.
+6. Show both SHA-tagged images. 7. Show the Trivy step log. 8. Show GHCR package pages.
+9. Show `terraform/` VPC+EKS code. 10. `kubectl get pods,svc` all Running. 11. `helm list`.
+12. Open the app via Ingress. 13. `kubectl get hpa`. 14. Prometheus Targets UP + Grafana panel.
+15. Break a Service/image and fix it live.
+
+## Configuration
+
+| Variable | Default | Used by |
+| -------- | ------- | ------- |
+| `DATABASE_URL` | `postgresql+psycopg://taskboard:taskboard@localhost:5432/taskboard` | backend, Alembic |
+| Backend | :8000 (Uvicorn; liveness `/health`, readiness `/ready`) | probes, HPA |
+| Frontend | :8080 in container → :3000 on host | Nginx, Compose |
+| Postgres | `taskboard/taskboard@postgres:5432/taskboard` | Compose, Helm |
+| AWS region | `ap-south-1` | Terraform |
+| Grafana | `admin` / `taskboard-admin` | monitoring values |
+
+## Grading map (M1–M10) and evidence
+
+- **M1 (10)** app: `backend/app/`, `backend/alembic/versions/`, `requirements.txt`, `frontend/`, `docker-compose.yml`, browser screenshot → `submission/m1/`
+- **M2 (10)** tests: `backend/tests/` (13 tests), `pytest.ini` + `conftest.py` (isolated SQLite), `pytest -v` screenshot → `submission/m2/`
+- **M3 (5)** git: public repo URL, 30+ meaningful commits, `.gitignore` (`.env`, `__pycache__`, `node_modules`, `.venv`) → `submission/m3/`
+- **M4 (10)** docker: non-root backend Dockerfile, multi-stage frontend Dockerfile, 3-service compose, `compose up` + browser screenshots → `submission/m4/`
+- **M5 (15)** pipeline: `.github/workflows/` → `submission/m5/` (+ green run URL, GHCR SHA-tag screenshots)
+- **M6 (5)** trivy: scan steps in workflow, scan screenshot, `submission/m6/explanation.txt`
+- **M7 (15)** terraform: `terraform/*.tf` + `tfvars.example`, no secrets → `submission/m7/` (+ plan/apply/destroy + console screenshots)
+- **M8 (15)** k8s: `k8s/` + `helm/` chart, 2 replicas each, ClusterIP, Ingress `/` + `/api`, all pods Running → `submission/m8/` (+ pods/svc/helm-list/Ingress screenshots)
+- **M9 (10)** observability: `/metrics`, `monitoring/` values, Targets UP + Grafana panel screenshots → `submission/m9/`
+- **M10 (5)**: this README + live demo (recorded only if remote)
