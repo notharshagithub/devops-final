@@ -537,20 +537,4 @@ echo "$(minikube ip) taskboard.local" | sudo tee -a /etc/hosts
 # API: http://taskboard.local/api/tasks/stats
 ```
 
-## Grading map (points)
 
-| Module | Item | Points |
-|--------|------|--------|
-| M1 | Running application (backend, frontend, compose) | 10 |
-| M2 | Test suite (13 tests) | 10 |
-| M3 | Git history, .gitignore | 5 |
-| M4 | Dockerfiles, compose | 10 |
-| M5 | CI/CD workflow | 15 |
-| M6 | Trivy scan explanation | 5 |
-| M7 | Terraform | 15 |
-| M8 | Kubernetes (Helm, Ingress) | 15 |
-| M9 | Observability (metrics, targets, Grafana) | 10 |
-| M10 | README + demo | 5 |
-| **Total** | | **100** |
-
-Detailed evidence for each module is available in the corresponding `submission/mX/` directories.
