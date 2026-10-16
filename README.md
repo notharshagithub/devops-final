@@ -30,6 +30,17 @@ GitHub → Actions (pytest → build → Trivy → GHCR push) → Terraform (VPC
 | Kubernetes   | Helm chart: 2× backend + 2× frontend, ClusterIP Services, Postgres + PVC, Ingress (`/` → frontend, `/api` → backend), HPA (CPU 60%, 2–6), ServiceMonitor |
 | Monitoring   | kube-prometheus-stack scraping `/metrics`; Grafana panels (RPS, p95, errors) |
 
+## Prerequisites
+
+| Need it for | Install |
+| ----------- | ------- |
+| `docker compose up` (fastest run) | Docker Engine 24+ + Compose plugin, ports 3000/8000 free |
+| Backend directly | Python 3.12+, PostgreSQL 14+ (or set any `DATABASE_URL`), `pip install -r backend/requirements.txt` |
+| Frontend directly | Node 22+, `npm install` in `frontend/` |
+| Kubernetes | minikube + `kubectl` + Helm 4+ (Ingress via `minikube addons enable ingress`) |
+| AWS | Terraform 1.6+, AWS CLI with configured credentials (`aws configure`, region `ap-south-1`) |
+| Screenshots | Any browser + terminal that can run the commands below |
+
 ## Run it
 
 ```bash
