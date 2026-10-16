@@ -2,13 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const STATUS_LABELS = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' }
+const WORKSPACES = ['Platform Team', 'DevOps Capstone', 'Sprint 21']
 
 function badgeClass(kind, value) {
-  return `badge badge-${kind}-${value.replace('_', '-')}`
+  return `badge badge-${kind}-${String(value).replace(/[^a-z-]/gi, '-').toLowerCase()}`
 }
 
-function emptyForm() {
-  return { title: '', description: '', status: 'todo', priority: 'medium', assignee: '' }
+function emptyForm(activeWorkspace) {
+  return {
+    title: '',
+    description: '',
+    status: 'todo',
+    priority: 'medium',
+    assignee: '',
+    workspace: WORKSPACES.includes(activeWorkspace) ? activeWorkspace : 'DevOps Capstone'
+  }
 }
 
 export default function App() {
@@ -16,18 +24,23 @@ export default function App() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [workspace, setWorkspace] = useState('all')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState(emptyForm())
+  const [form, setForm] = useState(emptyForm('all'))
   const [saving, setSaving] = useState(false)
+  const [pendingId, setPendingId] = useState(null)
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
+  const fetchAll = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     setError('')
     try {
+      const params = new URLSearchParams({ limit: '200' })
+      if (workspace !== 'all') params.set('workspace', workspace)
       const [tasksRes, statsRes] = await Promise.all([
-        fetch('/api/tasks?limit=200'),
+        fetch(`/api/tasks?${params}`),
         fetch('/api/tasks/stats')
       ])
       if (!tasksRes.ok) throw new Error(`Tasks API failed: ${tasksRes.status}`)
@@ -37,11 +50,17 @@ export default function App() {
     } catch (e) {
       setError('Backend unreachable. Start the stack with: docker compose up --build (backend :8000). ' + e.message)
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
-  }, [])
+  }, [workspace])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  const counts = useMemo(() => {
+    const c = { all: tasks.length }
+    for (const w of WORKSPACES) c[w] = tasks.filter((t) => t.workspace === w).length
+    return c
+  }, [tasks])
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
@@ -53,10 +72,15 @@ export default function App() {
 
   const activity = useMemo(() => tasks.slice(0, 6), [tasks])
 
+  function pickWorkspace(w) {
+    setWorkspace((prev) => (prev === w ? 'all' : w))
+  }
+
   async function handleCreate(e) {
     e.preventDefault()
     if (!form.title.trim()) return
     setSaving(true)
+    setActionError('')
     try {
       const res = await fetch('/api/tasks', {
         method: 'POST',
@@ -65,10 +89,10 @@ export default function App() {
       })
       if (!res.ok) throw new Error(`Create failed: ${res.status}`)
       setShowModal(false)
-      setForm(emptyForm())
-      await fetchAll()
+      setForm(emptyForm(workspace))
+      await fetchAll(true)
     } catch (err) {
-      setError(String(err.message))
+      setActionError(String(err.message))
     } finally {
       setSaving(false)
     }
@@ -77,18 +101,36 @@ export default function App() {
   async function cycleStatus(task) {
     const order = ['todo', 'in_progress', 'done']
     const next = order[(order.indexOf(task.status) + 1) % order.length]
-    await fetch(`/api/tasks/${task.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: next })
-    })
-    await fetchAll()
+    setPendingId(task.id)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next })
+      })
+      if (!res.ok) throw new Error(`Status update failed: ${res.status}`)
+      await fetchAll(true)
+    } catch (err) {
+      setActionError(String(err.message))
+    } finally {
+      setPendingId(null)
+    }
   }
 
   async function removeTask(id) {
     if (!confirm('Delete this task?')) return
-    await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
-    await fetchAll()
+    setPendingId(id)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`)
+      await fetchAll(true)
+    } catch (err) {
+      setActionError(String(err.message))
+    } finally {
+      setPendingId(null)
+    }
   }
 
   return (
@@ -97,8 +139,22 @@ export default function App() {
         <div className="brand">◼ TaskBoard</div>
         <div className="ws-label">WORKSPACES</div>
         <nav className="ws-nav">
-          {['Platform Team', 'DevOps Capstone', 'Sprint 21'].map((w, i) => (
-            <button key={w} className={i === 1 ? 'ws active' : 'ws'}>{w}</button>
+          <button
+            className={workspace === 'all' ? 'ws active' : 'ws'}
+            onClick={() => setWorkspace('all')}
+            title="Show tasks from all workspaces"
+          >
+            All workspaces ({counts.all})
+          </button>
+          {WORKSPACES.map((w) => (
+            <button
+              key={w}
+              className={workspace === w ? 'ws active' : 'ws'}
+              onClick={() => pickWorkspace(w)}
+              title={workspace === w ? `Click again to show all workspaces` : `Filter to ${w}`}
+            >
+              {w} ({counts[w] ?? 0})
+            </button>
           ))}
         </nav>
         <div className="ws-label">PIPELINE</div>
@@ -117,9 +173,11 @@ export default function App() {
         <header className="topbar">
           <div>
             <h1>Project Dashboard</h1>
-            <p className="muted">Track delivery from laptop to Kubernetes</p>
+            <p className="muted">
+              {workspace === 'all' ? 'Track delivery from laptop to Kubernetes' : `Workspace: ${workspace} — click again to show all`}
+            </p>
           </div>
-          <button className="primary" onClick={() => setShowModal(true)}>+ New Task</button>
+          <button className="primary" onClick={() => { setForm(emptyForm(workspace)); setShowModal(true) }}>+ New Task</button>
         </header>
 
         <section className="kpis">
@@ -157,11 +215,12 @@ export default function App() {
           />
         </section>
 
+        {actionError && <div className="state error"><strong>Action failed.</strong> {actionError}</div>}
         {loading && <div className="state">Loading tasks…</div>}
         {error && !loading && (
           <div className="state error">
             <strong>Backend error.</strong> {error}
-            <div><button className="chip" onClick={fetchAll}>Retry</button></div>
+            <div><button className="chip" onClick={() => fetchAll()}>Retry</button></div>
           </div>
         )}
 
@@ -170,21 +229,28 @@ export default function App() {
             <div className="table-wrap">
               <table className="tasks">
                 <thead>
-                  <tr><th>Task</th><th>Status</th><th>Priority</th><th>Assignee</th><th></th></tr>
+                  <tr><th>Task</th><th>Status</th><th>Priority</th><th>Workspace</th><th>Assignee</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filtered.map((t) => (
-                    <tr key={t.id}>
+                    <tr key={t.id} className={pendingId === t.id ? 'row-pending' : ''}>
                       <td>
                         <div className="t-title">{t.title}</div>
                         <div className="t-desc">{t.description}</div>
                       </td>
                       <td><span className={badgeClass('status', t.status)}>{STATUS_LABELS[t.status]}</span></td>
                       <td><span className={badgeClass('priority', t.priority)}>{t.priority}</span></td>
+                      <td><span className="ws-badge">{t.workspace || '—'}</span></td>
                       <td className="muted">{t.assignee}</td>
                       <td className="row-actions">
-                        <button title="Advance status" onClick={() => cycleStatus(t)}>▶</button>
-                        <button title="Delete" onClick={() => removeTask(t.id)}>✕</button>
+                        <button
+                          title={`Advance status (now ${STATUS_LABELS[t.status]})`}
+                          onClick={() => cycleStatus(t)}
+                          disabled={pendingId === t.id}
+                        >
+                          {pendingId === t.id ? '…' : '▶'}
+                        </button>
+                        <button title="Delete" onClick={() => removeTask(t.id)} disabled={pendingId === t.id}>✕</button>
                       </td>
                     </tr>
                   ))}
@@ -200,7 +266,7 @@ export default function App() {
                   <span className={badgeClass('status', t.status)}>●</span>
                   <div>
                     <div className="feed-title">{t.title}</div>
-                    <div className="muted small">{t.assignee} • #{t.id}</div>
+                    <div className="muted small">{t.assignee} • {t.workspace} • #{t.id}</div>
                   </div>
                 </div>
               ))}
@@ -213,6 +279,7 @@ export default function App() {
           <div className="modal-backdrop" onClick={() => setShowModal(false)}>
             <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handleCreate}>
               <h2>Create task</h2>
+              {actionError && <div className="state error">{actionError}</div>}
               <label>Title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={200} /></label>
               <label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} /></label>
               <div className="form-row">
@@ -231,7 +298,14 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              <label>Assignee<input value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} placeholder="Unassigned" /></label>
+              <div className="form-row">
+                <label>Workspace
+                  <select value={form.workspace} onChange={(e) => setForm({ ...form, workspace: e.target.value })}>
+                    {WORKSPACES.map((w) => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </label>
+                <label>Assignee<input value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} placeholder="Unassigned" /></label>
+              </div>
               <div className="modal-actions">
                 <button type="button" className="chip" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving…' : 'Create'}</button>

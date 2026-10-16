@@ -38,6 +38,9 @@ table.tasks th, table.tasks td { padding: 12px; border-bottom: 1px solid #1e293b
 .t-title { font-weight: 700; }
 .t-desc { color: #94a3b8; font-size: 13px; max-width: 420px; }
 .row-actions button { margin-right: 6px; background: #1e293b; color: white; border: 0; border-radius: 8px; padding: 6px 9px; cursor: pointer; }
+.row-actions button:disabled { opacity: 0.5; cursor: wait; }
+tr.row-pending { opacity: 0.6; }
+.ws-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #0ea5e922; border: 1px solid #0ea5e9; white-space: nowrap; }
 .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: capitalize; }
 .badge-status-todo { background: #334155; }
 .badge-status-in-progress { background: #7c3aed33; border: 1px solid #7c3aed; }
