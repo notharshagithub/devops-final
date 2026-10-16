@@ -99,12 +99,22 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Configure kubeconfig (self-hosted / EKS)
+      - name: Configure kubeconfig
+        id: kubeconfig
         run: |
-          echo "Configure KUBECONFIG via secrets in repo settings."
-          echo "Example: aws eks update-kubeconfig --region ap-south-1 --name taskboard-eks"
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "No KUBE_CONFIG_DATA secret set - skipping cluster deploy (see README > CI/CD)."
+            echo "Add a base64 kubeconfig as KUBE_CONFIG_DATA to enable real deploys."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            mkdir -p ~/.kube
+            echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
+            kubectl cluster-info --request-timeout=15s
+          fi
 
       - name: Helm upgrade
+        if: steps.kubeconfig.outputs.configured == 'true'
         run: |
           helm upgrade --install taskboard ./helm/taskboard \
             --namespace taskboard --create-namespace \
