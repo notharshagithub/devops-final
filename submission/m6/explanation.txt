@@ -1,0 +1,8 @@
+Trivy scanned our backend and frontend container images (Debian/Alpine OS packages plus
+Python/Node dependencies) for known HIGH and CRITICAL CVEs, with the pipeline set to fail
+on any actionable finding (exit-code 1) so a tainted image can never reach GHCR or the cluster.
+The first backend scan found 6 fixable HIGHs — python-multipart path-traversal/DoS
+(CVE-2026-24486, CVE-2026-42561, CVE-2026-53539) and starlette DoS/SSRF
+(CVE-2025-62727, CVE-2026-48818, CVE-2026-54283) — which we cleared by upgrading to
+python-multipart 0.0.32 and FastAPI 0.143.2 (starlette 1.8.0); 48 remaining Debian HIGHs have
+no published fix, so the gate uses ignore-unfixed to fail only on remediable CVEs.
