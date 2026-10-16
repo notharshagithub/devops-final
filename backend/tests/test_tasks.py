@@ -8,6 +8,7 @@ def _create(client, **overrides):
         "status": "todo",
         "priority": "high",
         "assignee": "Harsha",
+        "workspace": "DevOps Capstone",
     }
     payload.update(overrides)
     r = client.post("/api/tasks", json=payload)
@@ -20,6 +21,7 @@ def test_create_task(client):
     assert task["id"] >= 1
     assert task["title"] == "Write docs"
     assert task["priority"] == "high"
+    assert task["workspace"] == "DevOps Capstone"
 
 
 def test_list_tasks(client):
@@ -74,3 +76,19 @@ def test_list_filter_by_status(client):
     r = client.get("/api/tasks", params={"status": "done"})
     assert r.status_code == 200
     assert all(t["status"] == "done" for t in r.json())
+
+
+def test_list_filter_by_workspace(client):
+    _create(client, title="Platform work", workspace="Platform Team")
+    _create(client, title="Sprint work", workspace="Sprint 21")
+    r = client.get("/api/tasks", params={"workspace": "Platform Team"})
+    assert r.status_code == 200
+    assert len(r.json()) >= 1
+    assert all(t["workspace"] == "Platform Team" for t in r.json())
+
+
+def test_update_task_workspace(client):
+    created = _create(client)
+    r = client.put(f"/api/tasks/{created['id']}", json={"workspace": "Sprint 21"})
+    assert r.status_code == 200
+    assert r.json()["workspace"] == "Sprint 21"

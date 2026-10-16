@@ -23,6 +23,7 @@ def _get_task_or_404(task_id: int, db: Session) -> models.Task:
 def list_tasks(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     priority: Optional[str] = Query(default=None),
+    workspace: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -34,6 +35,8 @@ def list_tasks(
         stmt = stmt.where(models.Task.status == status_filter)
     if priority:
         stmt = stmt.where(models.Task.priority == priority)
+    if workspace:
+        stmt = stmt.where(models.Task.workspace == workspace)
     if search:
         like = f"%{search}%"
         stmt = stmt.where(

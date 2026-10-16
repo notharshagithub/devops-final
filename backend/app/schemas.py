@@ -10,6 +10,7 @@ class TaskBase(BaseModel):
     status: str = Field(default="todo", pattern="^(todo|in_progress|done)$")
     priority: str = Field(default="medium", pattern="^(low|medium|high)$")
     assignee: str = Field(default="Unassigned", max_length=100)
+    workspace: str = Field(default="DevOps Capstone", max_length=50)
 
 
 class TaskCreate(TaskBase):
@@ -22,6 +23,7 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = Field(default=None, pattern="^(todo|in_progress|done)$")
     priority: Optional[str] = Field(default=None, pattern="^(low|medium|high)$")
     assignee: Optional[str] = Field(default=None, max_length=100)
+    workspace: Optional[str] = Field(default=None, max_length=50)
 
 
 class TaskResponse(TaskBase):
