@@ -67,7 +67,7 @@ jobs:
         run: docker build -t $FRONTEND_IMAGE:${{ github.sha }} ./frontend
 
       - name: Trivy scan backend (fail on HIGH,CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
           format: table
@@ -75,7 +75,7 @@ jobs:
           exit-code: "1"
 
       - name: Trivy scan frontend (fail on HIGH,CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
           format: table
