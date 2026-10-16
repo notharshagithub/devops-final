@@ -1,0 +1,10 @@
+# Dev overrides: enable Ingress explicitly, keep demo Postgres in-cluster.
+ingress:
+  enabled: true
+  host: taskboard.local
+
+images:
+  backend:
+    tag: dev
+  frontend:
+    tag: dev
